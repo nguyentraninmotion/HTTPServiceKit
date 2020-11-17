@@ -9,7 +9,6 @@
 
 import Foundation
 import PromiseKit
-import Logging
 
 public typealias MultipartFormDataParam = (data: Data, withName: String, fileName: String?, mimeType: String?)
 public typealias MultipartFormURLParam = (fileURL: URL, withName: String, fileName: String?, mimeType: String?)
@@ -23,6 +22,31 @@ public protocol MultipartFormDataEncodable {
 
 public protocol HTTPServiceDecoder {
     func decode<T:Decodable>(value: Data) throws -> T
+}
+
+public protocol HTTPServiceLogger {
+    func log(level: HTTPService.LogLevel, message: String, metadata: [String: String]?)
+}
+
+public extension HTTPServiceLogger {
+    @inlinable
+    func debug(_ message: String, metadata: [String: String]? = nil) {
+        self.log(level: .debug, message: message, metadata: metadata)
+    }
+    
+    @inlinable
+    func error(_ error: Error, metadata: [String: String]? = nil) {
+        self.log(level: .error, message: error.localizedDescription, metadata: metadata)
+    }
+}
+
+public struct HTTPServiceConsoleLogger: HTTPServiceLogger {
+    public init() {}
+
+    public func log(level: HTTPService.LogLevel, message: String, metadata: [String : String]?) {
+        let metadataStr = metadata?.map { "\($0) = \($1)" }.joined(separator: " ")
+        print("[\(level)] - \(message)\(metadataStr != nil ? "\n\(metadataStr!)" : "")")
+    }
 }
 
 extension JSONDecoder: HTTPServiceDecoder {
@@ -266,6 +290,16 @@ open class HTTPService {
         case connect = "CONNECT"
     }
 
+    public enum LogLevel: String, Codable, CaseIterable {
+        case trace
+        case debug
+        case info
+        case notice
+        case warning
+        case error
+        case critical
+    }
+
     public struct Config {
         public var baseUrl: URL?
         public var headers: HTTPService.Headers = [:]
@@ -275,6 +309,7 @@ open class HTTPService {
             "application/json": JSONDecoder()
         ]
         public var cacheStore: URLCache? = nil
+        public var logger: HTTPServiceLogger? = HTTPServiceConsoleLogger()
 
         public init(baseUrl: URL?) {
             self.baseUrl = baseUrl
@@ -292,8 +327,6 @@ open class HTTPService {
         "jpg": "image/jpg",
         "png": "image/png"
     ]
-    
-    private lazy var logger = { Logger(label: "HTTPServiceKit") }()
 
     public init(config: Config) {
         self.session = URLSession(configuration: .default)
@@ -335,39 +368,39 @@ open class HTTPService {
             guard result == nil else { return Promise.value(result) }
 
             return Promise { seal in
-#if DEBUG
-                var metadata = Logger.Metadata()
-                request.allHTTPHeaderFields?.forEach {
-                    metadata["<\($0.key)>"] = "\($0.value)"
+                if let logger = self.config.logger {
+                    var metadata = [String:String]()
+                    request.allHTTPHeaderFields?.forEach {
+                        metadata["<\($0.key)>"] = "\($0.value)"
+                    }
+                    logger.debug("==========================================================")
+                    logger.debug("HEADER", metadata: metadata)
+                    logger.debug("REQUEST(\(request.httpMethod ?? "UNKNOWN"))",
+                                      metadata: ["<Request>":"\(request.debugDescription)"])
+                    if request.httpBody != nil {
+                        logger.debug("",
+                                      metadata: ["<Body>":"\(request.httpBody?.utf8String() ?? "")"])
+                    }
+                    logger.debug("==========================================================")
                 }
-                self.logger.debug("==========================================================")
-                self.logger.debug("HEADER", metadata: metadata)
-                self.logger.debug("REQUEST(\(request.httpMethod ?? "UNKNOWN"))",
-                                  metadata: ["<Request>":"\(request.debugDescription)"])
-                if request.httpBody != nil {
-                    self.logger.debug("",
-                                  metadata: ["<Body>":"\(request.httpBody?.utf8String() ?? "")"])
-                }
-                self.logger.debug("==========================================================")
-#endif
 
                 let task = self.session.dataTask(with: request) { data, resp, err in
                     let httpResponse = resp as? HTTPURLResponse
-                    
-#if DEBUG
-                    self.logger.debug("==========================================================")
-                    self.logger.debug("RESPONSE: HTTP STATUS: \(httpResponse?.statusCode ?? 0)")
-                    self.logger.debug("RESPONSE MIMETYPE: \(resp?.mimeType ?? "")")
-                    self.logger.debug("FOR REQUEST(\(request.httpMethod ?? "UNKNOWN"))",
-                                      metadata: ["<Request>":"\(request.debugDescription)"])
 
-                    if resp?.mimeType == "application/octet-stream" {
-                        self.logger.debug("RESPONSE DATA == <Octet-Stream binay data>")
-                    } else {
-                        self.logger.debug("RESPONSE DATA", metadata: ["<Data>":"\(data?.utf8String() ?? "null")"])
+                    if let logger = self.config.logger {
+                        logger.debug("==========================================================")
+                        logger.debug("RESPONSE: HTTP STATUS: \(httpResponse?.statusCode ?? 0)")
+                        logger.debug("RESPONSE MIMETYPE: \(resp?.mimeType ?? "")")
+                        logger.debug("FOR REQUEST(\(request.httpMethod ?? "UNKNOWN"))",
+                                          metadata: ["<Request>":"\(request.debugDescription)"])
+
+                        if resp?.mimeType == "application/octet-stream" {
+                            logger.debug("RESPONSE DATA == <Octet-Stream binay data>")
+                        } else {
+                            logger.debug("RESPONSE DATA", metadata: ["<Data>":"\(data?.utf8String() ?? "null")"])
+                        }
+                        logger.debug("==========================================================")
                     }
-                    self.logger.debug("==========================================================")
-#endif
 
                     if let neterr = err?.networkError { return seal.reject(neterr) }
                     if let error = httpResponse?.serviceError(data: data) { return seal.reject(error) }
@@ -405,6 +438,12 @@ open class HTTPService {
 
                 guard let resp = cachedResponse else { throw err }
                 return Promise.value((resp.response.mimeType ?? "", resp.data))
+            }
+            .recover { error -> Promise<Result?> in
+                if let logger = self.config.logger {
+                    logger.error(error)
+                }
+                throw error
             }
         }
     }

@@ -20,7 +20,6 @@ let package = Package(
     dependencies: [
         // Dependencies declare other packages that this package depends on.
         .package(url: "https://github.com/mxcl/PromiseKit", from: "6.13.1"),
-        .package(url: "https://github.com/apple/swift-log.git", from: "1.4.0")
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -28,8 +27,7 @@ let package = Package(
         .target(
             name: "HTTPServiceKit",
             dependencies: [
-                .product(name: "PromiseKit", package: "PromiseKit"),
-                .product(name: "Logging", package: "swift-log")
+                .product(name: "PromiseKit", package: "PromiseKit")
             ]),
         .testTarget(
             name: "HTTPServiceKitTests",
