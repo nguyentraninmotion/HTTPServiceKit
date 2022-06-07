@@ -39,7 +39,7 @@ public struct MultipartMixed {
             """.data(using: .utf8)! + $0.data
         }
 
-        let boundary = "httpservicekit.mixed.boundary~\( Data(randomBytes: 12).base64EncodedString() )"
+        let boundary = "httpservicekit.mixed.boundary~\( UUID().uuidString )"
         let sep = "--\(boundary)".data(using: .utf8)!
         let newline = "\r\n".data(using: .utf8)!
 
@@ -107,7 +107,7 @@ public struct MultipartForm {
 
         var boundary: String? = nil
         repeat {
-            let val = "httpservicekit.multipart.boundary~\( Data(randomBytes: 12).base64EncodedString() )"
+            let val = "httpservicekit.multipart.boundary~\( UUID().uuidString )"
             let data = val.data(using: .utf8)!
             let collision = datum.first(where: { !($0.range(of: data)?.isEmpty ?? true) })
             if collision == nil { boundary = val }
