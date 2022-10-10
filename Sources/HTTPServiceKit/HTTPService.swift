@@ -319,10 +319,10 @@ open class HTTPService {
     public typealias Headers = [String:String]
     public typealias DecoderRegistry = [String:HTTPServiceDecoder]
     public typealias Result = (mimeType: String, body: Data)
-
+    
+    let config: Config
     private let coder = JSONEncoder()
     private let session: URLSession
-    private let config: Config
     private let contentTypeMapping: [String:String] = [
         "jpg": "image/jpg",
         "png": "image/png"
