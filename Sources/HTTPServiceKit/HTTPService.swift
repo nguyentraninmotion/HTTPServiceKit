@@ -320,7 +320,7 @@ open class HTTPService {
     public typealias DecoderRegistry = [String:HTTPServiceDecoder]
     public typealias Result = (mimeType: String, body: Data)
     
-    let config: Config
+    public let config: Config
     private let coder = JSONEncoder()
     private let session: URLSession
     private let contentTypeMapping: [String:String] = [
